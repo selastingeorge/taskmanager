@@ -1,101 +1,293 @@
+"use client"
+
+import Task from "@/components/ui/task";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Textarea } from "@/components/ui/textarea"
+import { useEffect, useState } from "react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns"
+import { cn } from "@/lib/utils"
+import { CalendarDays } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { Skeleton } from "@/components/ui/skeleton";
 import Image from "next/image";
+import empty_state from "@/public/general-empty-state.svg"
+
+interface Task {
+  id: number;
+  title: string;
+  description?: string;
+  date?: string;
+  completed: boolean;
+}
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [addTask, setAddTask] = useState(false);
+  const [date, setDate] = useState<Date>();
+  const [openDatePicker, setOpenDatePicker] = useState(false);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast()
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  useEffect(() => {
+    const fetchTasks = async () => {
+      try {
+        const response = await fetch(`${process.env.apiUrl}/tasks`);
+        if (response.ok) {
+          const data: Task[] = await response.json(); // Cast data to TaskType[]
+          setTasks(data);
+        } else {
+          console.error('Failed to fetch tasks');
+        }
+      } catch (error) {
+        console.error('Error fetching tasks:', error);
+      }
+      finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTasks();
+  }, []);
+
+  const addTaskItem = async () => {
+    const title = document.getElementById('title') as HTMLInputElement;
+    const description = document.getElementById('description') as HTMLInputElement;
+
+    if (!title.value.trim() || !description.value.trim() || !date) {
+      toast({
+        title: "Error",
+        description: "Please fillout all the fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const task = {
+      title: title.value,
+      description: description.value,
+      date: format(date, 'yyyy-MM-dd'),
+      completed: false,
+    };
+
+    try {
+      const response = await fetch(`${process.env.apiUrl}/tasks/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(task),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Task created successfully:', data);
+        toast({
+          title: "Task added",
+          description: `"${title.value}" has been added to the list`,
+        });
+        setTasks((prevTasks) => [...prevTasks, data.data]);
+        setAddTask(false);
+      } else {
+        const errorData = await response.json();
+        console.error('Error:', errorData);
+        toast({
+          title: "Error",
+          description: "Unable to add new task, please try again",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Fetch error:', error);
+      toast({
+        title: "Error",
+        description: "Unable to add new task, please try again",
+        variant: "destructive",
+      });
+    }
+  };
+
+
+  const updateTaskStatus = async (id: number, completed: boolean) => {
+    try {
+      const response = await fetch(`${process.env.apiUrl}/tasks/${id}/`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ completed }),
+      });
+
+      if (response.ok) {
+        const updatedTask = await response.json();
+        setTasks(prevTasks =>
+          prevTasks.map(task => (task.id === id ? updatedTask.data : task))
+        );
+        toast({
+          title: "Task Updated",
+          description: `"${updatedTask.data.title}" has been marked as ${completed ? 'completed' : 'pending'}`,
+        });
+      } else {
+        console.error('Failed to update task status');
+        toast({
+          title: "Error",
+          description: "Unable to update the task, please try again",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error updating task status:', error);
+      toast({
+        title: "Error",
+        description: "Unable to update the task, please try again",
+        variant: "destructive",
+      });
+    }
+  };
+
+
+  const deleteTask = async (id: number) => {
+    try {
+      const response = await fetch(`${process.env.apiUrl}/tasks/${id}/`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        setTasks(prevTasks => prevTasks.filter(task => task.id !== id));
+        toast({
+          title: "Task Deleted",
+          description: "Task has been deleted",
+        });
+      } else {
+        console.error('Failed to delete task');
+        toast({
+          title: "Error",
+          description: "Unable to delete the task, please try again",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error deleting task:', error);
+      toast({
+        title: "Error",
+        description: "Unable to delete the task, please try again",
+        variant: "destructive",
+      });
+    }
+  };
+
+  return (
+    <main className="w-full h-full bg-light flex items-center justify-center py-5 ">
+      <section className="w-full h-full px-6 py-5 border max-w-[700px] rounded-lg border-light bg-white overflow-auto">
+        <div className="w-full h-auto flex justify-between items-center">
+          <h1 className="text-xl font-semibold text-gray-900">Task Manager</h1>
+          {tasks.length > 0 ?(<button className="px-4 py-2 text-sm rounded-full font-semibold text-white bg-violet-600 hover:bg-violet-700 transition" onClick={() => setAddTask(true)}>Add Task</button>):''}
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+        {loading ? (
+          <div className="flex justify-center items-center min-h-[200px]">
+            <div className="flex items-center space-x-4">
+            <Skeleton className="h-12 w-12 rounded-full" />
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-[250px]" />
+              <Skeleton className="h-4 w-[200px]" />
+            </div>
+          </div>
+          </div>
+        ) : (
+          <div className="flex flex-col pt-5 gap-4 overflow-hidden">
+          {tasks.length > 0 ? (
+            tasks.map((task) => (
+              <Task
+                key={task.id}
+                id={task.id}
+                title={task.title}
+                description={task.description}
+                date={task.date}
+                completed={task.completed}
+                onStatusChange={(id: number, completed: boolean) =>
+                  updateTaskStatus(id, completed)
+                }
+                onDelete={() => deleteTask(task.id)}
+              />
+            ))
+          ) : (
+            <div className="flex flex-col items-center justify-center py-10 text-center text-gray-600">
+              <Image
+                src={empty_state}
+                alt="No Tasks"
+                className="w-40 h-40 mb-5"
+                width={150}
+                height={150}
+              />
+              <h2 className="text-2xl font-semibold">No tasks available</h2>
+              <p className="text-sm text-gray-500 mt-5 max-w-[300px]">
+                You don&apos;t have any tasks yet. Click the button above to add your first task.
+              </p>
+              <button className="px-4 mt-5 py-2 text-sm rounded-full font-semibold text-white bg-violet-600 hover:bg-violet-700 transition" onClick={() => setAddTask(true)}>Add a new task</button>
+            </div>
+          )}
+        </div>
+        )}
+      </section>
+
+
+      {
+        // Add Task Dialog
+      }
+      <Dialog open={addTask} onOpenChange={setAddTask}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Task</DialogTitle>
+            <DialogDescription className="text-gray-700">
+              Update the title, description, and due date of your task.
+            </DialogDescription>
+            <div className="flex flex-col py-4 gap-5">
+              <div className="w-full flex flex-col gap-2.5">
+                <Label htmlFor="title" className="text-start">
+                  Title
+                </Label>
+                <Input id="title" placeholder="Enter the task title" />
+              </div>
+              <div className="w-full flex flex-col gap-2.5">
+                <Label htmlFor="description" className="text-start">
+                  Description
+                </Label>
+                <Textarea id="description" rows={3} placeholder="Enter the task description" />
+              </div>
+              <Popover open={openDatePicker} onOpenChange={setOpenDatePicker}>
+                <PopoverTrigger asChild>
+                  <div className="flex flex-col gap-2.5">
+                    <Label className="text-start">
+                      Due Date
+                    </Label>
+                    <Button className={cn("w-full h-[45px] bg-white border text-black font-normal flex items-center justify-start hover:bg-white", openDatePicker && "ring-2 ring-ring", !date && "text-muted-foreground")}>
+                      <CalendarDays />
+                      {date ? format(date, "PPP") : <span>Pick a date</span>}
+                    </Button>
+                  </div>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar mode="single" selected={date} onSelect={setDate} />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </DialogHeader>
+          <DialogFooter className="flex gap-2 sm:justify-start">
+            <Button type="button" variant="default" className="rounded-lg px-8" onClick={() => { addTaskItem() }}>
+              Create Task
+            </Button>
+            <DialogClose asChild>
+              <Button type="button" variant="secondary">
+                Cancel
+              </Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </main>
+  )
 }
